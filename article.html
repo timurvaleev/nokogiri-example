@@ -1,0 +1,194 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+       "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=UTF-8" />
+  <title>Семинар №2 - Nokogiri</title>
+  <style>
+    h1 { font-family: "Lucida Grande", verdana, arial, helvetica, sans-serif; font-size: 22px; font-weight: bold; }
+  div.writeboardbody { font-family: "Lucida Grande", verdana, arial, helvetica, sans-serif; font-size: 14px; line-height: 19px; color: #000; }
+  div.writeboardbody h1 { font-size: 130%; }
+  div.writeboardbody h2 { font-size: 100%; }
+  div.writeboardbody h3 { font-size: 100%; }
+  </style>
+</head>
+
+<body bgcolor="#FFFFFF">
+
+<h1>Семинар №2 - Nokogiri</h1>
+
+<div class="writeboardbody">
+  <p>Настало время сделать что-то полезное. Я расскажу вам о парсере <strong>nokogiri</strong> и покажу как выдернуть полезную информацию на примере бейзкампа.  Начнем со странички контактов. Я хочу выдернуть номера телефонов коллег и выгрузить их в csv файл пригодный для дальнейшего использования, например: для импорта в Google Contacts.</p>
+<p>Итак открываем страничку <a href="https://flatsoft.basecamphq.com/projects/2228113/companies">People</a>  и видим телефоны и имена всех сотрудников FlatSoft&#8217;a. Открываем исходный код странички и видим что информация о каждом сотруднике лежит в отдельном диве с классом &#8220;contact vcard&#8221;</p>
+<pre>
+&lt;div class="contact vcard" id="firm_employee_6004111"&gt;
+  &lt;div class="avatar"&gt;
+    &lt;a href="https://flatsoft.basecamphq.com/projects/2228113/people/6004111/edit" class="image"&gt;&lt;img alt="" class="avatar photo" height="48" src="https://asset3.37img.com/global/2db80d68fb3894aaa54aba458a5b90e132370107/avatar.png?r=3" width="48" /&gt;&lt;/a&gt;
+  &lt;/div&gt;
+  &lt;div class="body"&gt;
+    &lt;h3 class="fn"&gt;Timur Valeev&lt;/h3&gt;
+      &lt;a href="mailto:timur.valeev@flatsoft.com" class="email"&gt;timur.valeev@flatsoft.com&lt;/a&gt;&lt;br /&gt;
+      &lt;span class="label tel"&gt;&lt;abbr class="type" title="msg"&gt;Skype IM&lt;/abbr&gt;: &lt;span class="value"&gt;kibenimatik&lt;/span&gt;&lt;/span&gt;&lt;br /&gt;
+      &lt;span class="label tel"&gt;&lt;abbr class="type" title="Mobile"&gt;M&lt;/abbr&gt;: &lt;span class="value"&gt;+7.927.4307689&lt;/span&gt;&lt;/span&gt;&lt;br /&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+</pre>
+<p>Какие данные нам нужно взять:</p>
+<ul>
+	<li>Имя — берется из тега h3</li>
+	<li>Электропочта — анкор ссылки mailto</li>
+	<li>Контакты — span c классом &#8220;label tel&#8221;
+	<ul>
+		<li>Тип контакта — тег abbr, значение свойства title, либо текст заключенный в этот тег</li>
+		<li>Значение — span c классом &#8220;value&#8221;</li>
+	</ul></li>
+</ul>
+<p>И дополнительное условие: все телефонные номера привести к единому формату (&#8216;+7&#8230;&#8217;), для городских телефонов добавить код страны и код города (&#8216;+7843&#8230;&#8217;) и вырезать все символы кроме цифр и знака «+». Это требуется для того чтобы потом эти данные можно было импортировать куда угодно.</p>
+<p>Дабы не заморачиваться с аутентификацией на бейзкампе, я предпочел сохранить страничку локально.</p>
+<p>И так приступим к парсингу данных.</p>
+<pre>doc = Nokogiri::HTML(File.open('people.html'))</pre>
+<p><code>Nokogiri::HTML</code> как раз парсит структуру <span class="caps">HTML</span> файла и делает доступным использование методов для поиска данных.</p>
+<pre>
+doc.css('div.contact, div.vcard').each do |vcard|
+… 
+end
+</pre>
+<p>Ищем все блоки с <code>&lt;div class="contact vcard"&gt;</code> и в каждом найденном блоке будем искать  конкретную информацию. Метод css позволяет нам искать блоки так как если бы мы раскрашивали css для этой странички. Как видно по оператору each этот метод возвращает нам массив.</p>
+<pre>
+# &lt;h3 class="fn"&gt;Timur Valeev&lt;/h3&gt;
+  vc['Name'] = vcard.at_css('h3').text
+</pre>
+<p>Получили имя сотрудника, заключенное в тег <code>h3</code>. Заметьте что здесь используется метод <code>at_css</code> который возвращает первый найденный элемент.  Метод <code>text</code> возвращает содержимое тега, из которого вырезаны <code>html</code> теги.</p>
+<pre>
+# &lt;a href="mailto:timur.valeev@flatsoft.com" class="email"&gt;timur.valeev@flatsoft.com&lt;/a&gt;
+  if email_link = vcard.at_css('a.email')
+    vc['Email'] = email_link.text
+  end
+</pre>
+<p>Получили электропочту.</p>
+<pre>
+# &lt;span class="label tel"&gt;&lt;abbr class="type" title="msg"&gt;Skype IM&lt;/abbr&gt;: &lt;span class="value"&gt;kibenimatik&lt;/span&gt;&lt;/span&gt;&lt;br /&gt;
+# &lt;span class="label tel"&gt;&lt;abbr class="type" title="Mobile"&gt;M&lt;/abbr&gt;: &lt;span class="value"&gt;+7.927.4307689&lt;/span&gt;&lt;/span&gt;&lt;br /&gt;
+
+  vcard.css('span.label, span.tel').each do |span|
+
+    abbr = span.at_css('abbr')
+    name = (abbr['title'] == 'msg' ? name.text : abbr['title'])
+    
+    value = span.at_css('span.value').text
+    
+    if %w( Home Mobile Office Fax ).include?(name)
+      value = value.gsub(/[^\d\+]/, '').gsub(/^8/, '+7').gsub(/^2/, '+78432')
+    end
+    
+    vc[name] = value
+  end
+</pre>
+<p>Теперь самое интересное. Нам нужно найти все теги <code>span</code> c классом &#8220;label tel&#8221;, внутри него найте тег <code>abbr</code> и посмотреть его свойство <code>title</code> чтобы определить тип. Если «msg» то взять содержимое этого тега. А для значения найти <code>span</code> c классом &#8220;value&#8221;. И если это телефонный номер то привести его к формату о котором писал выше. Чтобы посмотреть свойство, используется метод <code>[]</code> например если бы мы хотели бы узнать свойство <code>href</code> у ссылки то написали бы <code>at_css('a')['href']</code></p>
+<p>Полный код:<br />
+<pre><br />
+require &#8216;rubygems&#8217;<br />
+require &#8216;nokogiri&#8217;<br />
+require &#8216;fastercsv&#8217;</p>
+<p>doc = Nokogiri::<acronym title="File.open(&#39;people.html&#39;"><span class="caps">HTML</span></acronym>)</p>
+<p>contacts = []</p>
+<p>doc.css(&#8216;div.contact, div.vcard&#8217;).each do |vcard|</p>
+vc = {}
+
+vc[&#8216;Name&#8217;] = vcard.at_css(&#8216;h3&#8217;).text
+
+if email_link = vcard.at_css(&#8216;a.email&#8217;)
+vc[&#8216;Email&#8217;] = email_link.text
+end
+
+vcard.css(&#8216;span.label, span.tel&#8217;).each do |span|
+abbr = span.at_css(&#8216;abbr&#8217;)
+name = (abbr[&#8216;title&#8217;] == &#8216;msg&#8217; ? abbr.text : abbr[&#8216;title&#8217;])
+
+value = span.at_css(&#8216;span.value&#8217;).text
+
+if %w( Home Mobile Office Fax ).include?(name)
+value = value.gsub(/[^\d\<ins>]/, &#8217;&#8217;).gsub(/^8/, &#8217;</ins>7&#8217;).gsub(/^2/, &#8216;+78432&#8217;)
+end
+
+vc[name] = value
+end
+contacts &lt;&lt; vc
+<p>end</p>
+<p>FasterCSV.open(&#8220;contacts-nokogiri-css.csv&#8221;, &#8220;w&#8221;) do |csv|<br />
+  keys = %w( Name Mobile Home Office Fax Email )</p>
+contacts.each {|c| keys |= c.keys }
+csv &lt;&lt; keys
+
+contacts.each do |contact|
+csv &lt;&lt; keys.map{|key| contact[key]}
+end
+<p>end<br />
+</pre></p>
+<p>Последний цикл в этом коде сохраняет полученные данные в файл с помощью гема FasterCSV, но это уже совсем другая история.</p>
+<p>Я продемонстрировал вам как парсить страничку используя css пути, ниже я переписал этот код используя xpath пути.</p>
+<pre>
+doc.xpath('//div[@class="contact vcard"]/div[@class="body"]').each do |vcard|
+
+  vc = {}
+  
+  vc['Name'] = vcard.at_xpath('h3').text
+  
+  if email_link = vcard.at_xpath('a[@class="email"]')
+    vc['Email'] = email_link.text
+  end
+  
+  vcard.xpath('span[@class="label tel"]').each do |span|
+    
+    abbr = span.at_xpath('abbr')
+    name = (abbr['title'] == 'msg' ? abbr.text : abbr['title'])
+    
+    value = span.at_xpath('span[@class="value"]').text
+    
+    if %w( Home Mobile Office Fax ).include?(name)
+      value = value.gsub(/[^\d\+]/, '').gsub(/^8/, '+7').gsub(/^2/, '+78432')
+    end
+    
+    vc[name] = value
+  end
+  contacts &lt;&lt; vc
+end
+</pre>
+<p>Пара замечаний. Аналогично методам <code>css</code> и <code>at_css</code>, метод <code>xpath</code> возвращает все найденные элементы, а метод <code>at_xpath</code> только первый найденный. Самое интересное что метод <code>xpath</code> почти в два раза быстрее чем <code>css</code> и почти в четыре раза быстрее чем аналогичный метод из <code>hpricot</code>.</p>
+<table>
+	<tr>
+		<th>Method</th>
+		<th>user</th>
+		<th>system</th>
+		<th>total</th>
+		<th>real</th>
+	</tr>
+	<tr>
+		<td>nokogiri (xpath)</td>
+		<td>0.010000</td>
+		<td>0.010000</td>
+		<td>0.020000</td>
+		<td>(  0.025930)</td>
+	</tr>
+	<tr>
+		<td>nokogiri (css)</td>
+		<td>0.030000</td>
+		<td>0.000000</td>
+		<td>0.030000</td>
+		<td>(  0.038563)</td>
+	</tr>
+	<tr>
+		<td>hpicot</td>
+		<td>0.070000</td>
+		<td>0.000000</td>
+		<td>0.070000</td>
+		<td>(  0.080301)</td>
+	</tr>
+</table>
+<p>C полными исходниками можете ознакомится на <a href="https://github.com/timurvaleev/nokogiri-example">гитхабе</a> там же найдете скрипт с помощью которого я делал замеры производительности. Полученный файл с контактами можно скачать <a href="https://flatsoft.basecamphq.com/projects/5610291/file/66048766/contacts.csv">здесь</a></p>
+</div>
+
+</body>
+</html>

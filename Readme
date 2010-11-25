@@ -1,0 +1,5 @@
+== Nokogiri usage example
+
+This is simple ruby script which parses Basecamp's 'people' page and extracts contacts to csv. 
+
+Actually there are 3 scripts each of them does the same job, but using differential tools. Two of them uses Nokogiri's xpath and css search methods and one use hpricot. Benchmark.rb is simple benchmark script which test all three methods.

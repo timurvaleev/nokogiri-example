@@ -1,0 +1,196 @@
+﻿Семинар №2 - Nokogiri
+==============================
+
+Настало время сделать что-то полезное. Я расскажу
+вам о парсере nokogiri и покажу как выдернуть
+полезную информацию на примере бейзкампа. Начнем со
+странички контактов. Я хочу выдернуть номера телефонов
+коллег и выгрузить их в csv файл пригодный
+для дальнейшего использования, например: для импорта в
+Google Contacts.
+
+Итак открываем страничку People и видим телефоны и
+имена всех сотрудников FlatSoft’a. Открываем исходный код
+странички и видим что информация о каждом
+сотруднике лежит в отдельном диве с классом
+“contact vcard”
+
+ <div class="contact vcard" id="firm_employee_6004111">
+<div class="avatar">
+  <a href="https://flatsoft.basecamphq.com/projects/2228113/people/6004111/edit" class="image"><img alt="" class="avatar photo" height="48" src="https://asset3.37img.com/global/2db80d68fb3894aaa54aba458a5b90e132370107/avatar.png?r=3" width="48" /></a>
+</div>
+<div class="body">
+  <h3 class="fn">Timur Valeev</h3>
+    <a href="mailto:timur.valeev@flatsoft.com" class="email">timur.valeev@flatsoft.com</a><br />
+    <span class="label tel"><abbr class="type" title="msg">Skype IM</abbr>: <span class="value">kibenimatik</span></span><br />
+    <span class="label tel"><abbr class="type" title="Mobile">M</abbr>: <span class="value">+7.927.4307689</span></span><br />
+</div>
+ </div>
+
+Какие данные нам нужно взять:
+
+  * Имя — берется из тега h3
+  * Электропочта — анкор ссылки mailto
+  * Контакты — span c классом “label tel”
+
+       * Тип контакта — тег abbr, значение свойства
+         title, либо текст заключенный в этот тег
+       * Значение — span c классом “value”
+
+И дополнительное условие: все телефонные номера привести
+к единому формату (‘+7…’), для городских телефонов
+добавить код страны и код города (‘+7843…’)
+и вырезать все символы кроме цифр и
+знака «+». Это требуется для того
+чтобы потом эти данные можно было импортировать
+куда угодно.
+
+Дабы не заморачиваться с аутентификацией на бейзкампе,
+я предпочел сохранить страничку локально.
+
+И так приступим к парсингу данных.
+
+ doc = Nokogiri::HTML(File.open('people.html'))
+
+Nokogiri::HTML как раз парсит структуру HTML файла
+и делает доступным использование методов для поиска
+данных.
+
+ doc.css('div.contact, div.vcard').each do |vcard|
+ …
+ end
+
+Ищем все блоки с <div class="contact vcard">
+и в каждом найденном блоке будем искать
+конкретную информацию. Метод css позволяет нам искать
+блоки так как если бы мы раскрашивали
+css для этой странички. Как видно по
+оператору each этот метод возвращает нам массив.
+
+ # <h3 class="fn">Timur Valeev</h3>
+vc['Name'] = vcard.at_css('h3').text
+
+Получили имя сотрудника, заключенное в тег h3.
+Заметьте что здесь используется метод at_css который
+возвращает первый найденный элемент. Метод text возвращает
+содержимое тега, из которого вырезаны html теги.
+
+ # <a href="mailto:timur.valeev@flatsoft.com" class="email">timur.valeev@flatsoft.com</a>
+if email_link = vcard.at_css('a.email')
+  vc['Email'] = email_link.text
+end
+
+Получили электропочту.
+
+ # <span class="label tel"><abbr class="type" title="msg">Skype IM</abbr>: <span class="value">kibenimatik</span></span><br />
+ # <span class="label tel"><abbr class="type" title="Mobile">M</abbr>: <span class="value">+7.927.4307689</span></span><br />
+
+vcard.css('span.label, span.tel').each do |span|
+
+  abbr = span.at_css('abbr')
+  name = (abbr['title'] == 'msg' ? name.text : abbr['title'])
+
+  value = span.at_css('span.value').text
+
+  if %w( Home Mobile Office Fax ).include?(name)
+    value = value.gsub(/[^\d\+]/, '').gsub(/^8/, '+7').gsub(/^2/, '+78432')
+  end
+
+  vc[name] = value
+end
+
+Теперь самое интересное. Нам нужно найти все
+теги span c классом “label tel”, внутри него найте
+тег abbr и посмотреть его свойство title чтобы
+определить тип. Если «msg» то
+взять содержимое этого тега. А для значения
+найти span c классом “value”. И если это
+телефонный номер то привести его к формату
+о котором писал выше. Чтобы посмотреть
+свойство, используется метод [] например если бы
+мы хотели бы узнать свойство href у
+ссылки то написали бы at_css('a')['href']
+
+Полный код:
+
+ require ‘rubygems’
+
+ require ‘nokogiri’
+
+ require ‘fastercsv’
+
+doc = Nokogiri::HTML)
+
+contacts = []
+
+doc.css(‘div.contact, div.vcard’).each do |vcard|
+
+vc = {} vc[‘Name’] = vcard.at_css(‘h3’).text if email_link =
+vcard.at_css(‘a.email’) vc[‘Email’] = email_link.text end
+vcard.css(‘span.label, span.tel’).each do |span| abbr =
+span.at_css(‘abbr’) name = (abbr[‘title’] == ‘msg’ ? abbr.text :
+abbr[‘title’]) value = span.at_css(‘span.value’).text if %w( Home
+Mobile Office Fax ).include?(name) value = value.gsub(/[^\d\]/,
+’’).gsub(/^8/, ’7’).gsub(/^2/, ‘+78432’) end vc[name] = value end
+contacts << vc
+
+end
+
+FasterCSV.open(“contacts-nokogiri-css.csv”, “w”) do |csv|
+keys = %w( Name Mobile Home Office Fax Email )
+
+contacts.each {|c| keys |= c.keys } csv << keys contacts.each do
+|contact| csv << keys.map{|key| contact[key]} end
+
+end
+
+Последний цикл в этом коде сохраняет полученные
+данные в файл с помощью гема FasterCSV,
+но это уже совсем другая история.
+
+Я продемонстрировал вам как парсить страничку используя
+css пути, ниже я переписал этот код
+используя xpath пути.
+
+ doc.xpath('//div[@class="contact vcard"]/div[@class="body"]').each do |vcard|
+
+vc = {}
+
+vc['Name'] = vcard.at_xpath('h3').text
+
+if email_link = vcard.at_xpath('a[@class="email"]')
+  vc['Email'] = email_link.text
+end
+
+vcard.xpath('span[@class="label tel"]').each do |span|
+
+  abbr = span.at_xpath('abbr')
+  name = (abbr['title'] == 'msg' ? abbr.text : abbr['title'])
+
+  value = span.at_xpath('span[@class="value"]').text
+
+  if %w( Home Mobile Office Fax ).include?(name)
+    value = value.gsub(/[^\d\+]/, '').gsub(/^8/, '+7').gsub(/^2/, '+78432')
+  end
+
+  vc[name] = value
+end
+contacts << vc
+ end
+
+Пара замечаний. Аналогично методам css и at_css,
+метод xpath возвращает все найденные элементы, а
+метод at_xpath только первый найденный. Самое интересное
+что метод xpath почти в два раза
+быстрее чем css и почти в четыре
+раза быстрее чем аналогичный метод из hpricot.
+
+     Method        user    system   total      real
+nokogiri (xpath) 0.010000 0.010000 0.020000 ( 0.025930)
+nokogiri (css)   0.030000 0.000000 0.030000 ( 0.038563)
+hpicot           0.070000 0.000000 0.070000 ( 0.080301)
+
+C полными исходниками можете ознакомится на гитхабе
+там же найдете скрипт с помощью которого
+я делал замеры производительности. Полученный файл с
+контактами можно скачать здесь

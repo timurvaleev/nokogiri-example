@@ -1,0 +1,5 @@
+.redcar
+.bundle
+*.csv
+*.html
+*.lock
